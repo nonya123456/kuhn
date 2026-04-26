@@ -1,16 +1,15 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref } from 'vue'
 
 type Status = 'idle' | 'solving' | 'done'
 
 interface SolveResult {
-  strategy: Record<string, number[]>
+  pass_pct: number
+  bet_pct: number
   ev: number
-  iterations: number
 }
 
 const CARDS = ['J', 'Q', 'K'] as const
-type Card = typeof CARDS[number]
 
 const SITUATIONS = [
   { label: 'P1 · first to act', suffix: '' },
@@ -18,21 +17,13 @@ const SITUATIONS = [
   { label: 'P2 · vs bet',       suffix: 'b' },
   { label: 'P1 · vs check-raise', suffix: 'pb' },
 ] as const
-type Situation = typeof SITUATIONS[number]
 
-const status      = ref<Status>('idle')
-const iterations  = ref(10000)
-const card        = ref<Card>('K')
-const situation   = ref<Situation>(SITUATIONS[0])
-const progress    = ref({ pct: 0, exploitability: 0 })
-const result      = ref<SolveResult | null>(null)
-
-const infosetKey = computed(() => card.value + situation.value.suffix)
-
-const spotProbs = computed(() => {
-  if (!result.value) return null
-  return result.value.strategy[infosetKey.value] ?? null
-})
+const status     = ref<Status>('idle')
+const iterations = ref(10000)
+const card       = ref<string>('K')
+const situation  = ref<string>('')        // store the suffix string directly
+const progress   = ref({ pct: 0, exploitability: 0 })
+const result     = ref<SolveResult | null>(null)
 
 async function calculate() {
   status.value = 'solving'
@@ -42,7 +33,7 @@ async function calculate() {
   const { job_id } = await fetch('/solve', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ iterations: iterations.value }),
+    body: JSON.stringify({ card: card.value, situation: situation.value, iterations: iterations.value }),
   }).then(r => r.json())
 
   await new Promise<void>((resolve, reject) => {
@@ -81,8 +72,8 @@ async function calculate() {
           v-for="c in CARDS"
           :key="c"
           :class="{ active: card === c }"
-          @click="card = c"
           :disabled="status === 'solving'"
+          @click="card = c"
         >{{ c }}</button>
       </div>
     </div>
@@ -93,9 +84,9 @@ async function calculate() {
         <button
           v-for="s in SITUATIONS"
           :key="s.suffix"
-          :class="{ active: situation === s }"
-          @click="situation = s"
+          :class="{ active: situation === s.suffix }"
           :disabled="status === 'solving'"
+          @click="situation = s.suffix"
         >{{ s.label }}</button>
       </div>
     </div>
@@ -111,7 +102,7 @@ async function calculate() {
         step="1000"
         :disabled="status === 'solving'"
       />
-      <button class="primary" @click="calculate" :disabled="status === 'solving'">
+      <button class="primary" :disabled="status === 'solving'" @click="calculate">
         {{ status === 'solving' ? 'Solving…' : status === 'done' ? 'Re-calculate' : 'Calculate' }}
       </button>
     </div>
@@ -121,25 +112,25 @@ async function calculate() {
       <span class="progress-label">{{ progress.pct }}% — exploitability {{ progress.exploitability.toFixed(4) }}</span>
     </div>
 
-    <template v-if="status === 'done' && spotProbs">
+    <template v-if="status === 'done' && result">
       <div class="result-card">
-        <p class="spot-title">{{ card }} · {{ situation.label }}</p>
+        <p class="spot-title">{{ card }} · {{ SITUATIONS.find(s => s.suffix === situation)?.label }}</p>
         <div class="action-row">
           <div class="action">
             <span class="action-label pass">Pass</span>
-            <span class="action-pct pass">{{ (spotProbs[0] * 100).toFixed(1) }}%</span>
+            <span class="action-pct pass">{{ (result.pass_pct * 100).toFixed(1) }}%</span>
           </div>
           <div class="action-bar-wrap">
-            <div class="action-fill pass-fill" :style="{ width: (spotProbs[0] * 100) + '%' }"></div>
-            <div class="action-fill bet-fill"  :style="{ width: (spotProbs[1] * 100) + '%' }"></div>
+            <div class="action-fill pass-fill" :style="{ width: (result.pass_pct * 100) + '%' }"></div>
+            <div class="action-fill bet-fill"  :style="{ width: (result.bet_pct  * 100) + '%' }"></div>
           </div>
           <div class="action">
             <span class="action-label bet">Bet</span>
-            <span class="action-pct bet">{{ (spotProbs[1] * 100).toFixed(1) }}%</span>
+            <span class="action-pct bet">{{ (result.bet_pct * 100).toFixed(1) }}%</span>
           </div>
         </div>
       </div>
-      <p class="ev">P1 EV <strong>{{ result!.ev.toFixed(4) }}</strong> <span class="muted">(Nash = −0.0556)</span></p>
+      <p class="ev">P1 EV <strong>{{ result.ev.toFixed(4) }}</strong> <span class="muted">(Nash = −0.0556)</span></p>
     </template>
   </main>
 </template>

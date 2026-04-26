@@ -19,20 +19,22 @@ use uuid::Uuid;
 
 // ── types ─────────────────────────────────────────────────────────────────────
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Clone)]
 struct SolveRequest {
+    card: String,       // "J" | "Q" | "K"
+    situation: String,  // "" | "p" | "b" | "pb"
     iterations: u32,
 }
 
 #[derive(Serialize, Clone)]
 struct SolveResult {
-    strategy: HashMap<String, Vec<f64>>,
+    pass_pct: f64,
+    bet_pct: f64,
     ev: f64,
-    iterations: u32,
 }
 
 enum Job {
-    Pending(u32),
+    Pending(SolveRequest),
     Done(SolveResult),
 }
 
@@ -98,7 +100,7 @@ fn cfr(nodes: &mut HashMap<String, Node>, cards: [usize; 2], history: &str, p0: 
     let p1_turn = is_p1_turn(history);
     let strat = nodes.entry(key.clone()).or_insert_with(Node::new).strategy();
 
-    let next = |action: &str| format!("{history}{action}");
+    let next = |a: &str| format!("{history}{a}");
     let (p_pass, p_bet) = if p1_turn {
         (cfr(nodes, cards, &next("p"), p0 * strat[0], p1),
          cfr(nodes, cards, &next("b"), p0 * strat[1], p1))
@@ -114,7 +116,6 @@ fn cfr(nodes: &mut HashMap<String, Node>, cards: [usize; 2], history: &str, p0: 
 
     let node = nodes.get_mut(&key).unwrap();
     for a in 0..2 {
-        // P1 maximizes, P2 minimizes P1's utility → negate regret for P2
         let regret = if p1_turn { utils[a] - node_util } else { node_util - utils[a] };
         node.regret_sum[a] = (node.regret_sum[a] + cf_reach * regret).max(0.0);
         node.strategy_sum[a] += my_reach * strat[a];
@@ -138,7 +139,7 @@ fn best_response(strat: &HashMap<String, Vec<f64>>, cards: [usize; 2], history: 
     }
 
     let p1_turn = is_p1_turn(history);
-    let acting = if p1_turn { 0 } else { 1 };
+    let acting = usize::from(!p1_turn);
     let key = infoset_key(history, cards);
 
     let u_pass = best_response(strat, cards, &format!("{history}p"), br);
@@ -147,7 +148,7 @@ fn best_response(strat: &HashMap<String, Vec<f64>>, cards: [usize; 2], history: 
     if acting == br {
         u_pass.max(u_bet)
     } else {
-        let s = strat.get(&key).map(|v| [v[0], v[1]]).unwrap_or([0.5, 0.5]);
+        let s = strat.get(&key).map_or([0.5; 2], |v| [v[0], v[1]]);
         s[0] * u_pass + s[1] * u_bet
     }
 }
@@ -158,36 +159,37 @@ fn all_deals() -> Vec<[usize; 2]> {
 
 fn compute_exploitability(strat: &HashMap<String, Vec<f64>>) -> f64 {
     let deals = all_deals();
-    let br0: f64 = deals.iter().map(|&c| best_response(strat, c, "", 0)).sum::<f64>() / 6.0;
-    let br1: f64 = deals.iter().map(|&c| best_response(strat, c, "", 1)).sum::<f64>() / 6.0;
+    let br0 = deals.iter().map(|&c| best_response(strat, c, "", 0)).sum::<f64>() / 6.0;
+    let br1 = deals.iter().map(|&c| best_response(strat, c, "", 1)).sum::<f64>() / 6.0;
     (br0 + br1) / 2.0
 }
 
-fn extract_avg_strategy(nodes: &HashMap<String, Node>) -> HashMap<String, Vec<f64>> {
-    nodes.iter().map(|(k, n)| {
-        let s = n.avg_strategy();
-        (k.clone(), vec![s[0], s[1]])
-    }).collect()
-}
-
-fn run_solver(total: u32, on_progress: impl Fn(u32, f64)) -> SolveResult {
+fn run_solver(req: &SolveRequest, on_progress: impl Fn(u32, f64)) -> SolveResult {
     let mut nodes: HashMap<String, Node> = HashMap::new();
     let deals = all_deals();
-    let report_every = (total / 20).max(500);
+    let report_every = (req.iterations / 20).max(500);
 
-    for i in 1..=total {
+    for i in 1..=req.iterations {
         for &cards in &deals {
             cfr(&mut nodes, cards, "", 1.0, 1.0);
         }
-        if i % report_every == 0 || i == total {
-            let s = extract_avg_strategy(&nodes);
+        if i % report_every == 0 || i == req.iterations {
+            let s: HashMap<String, Vec<f64>> = nodes.iter()
+                .map(|(k, n)| { let a = n.avg_strategy(); (k.clone(), vec![a[0], a[1]]) })
+                .collect();
             on_progress(i, compute_exploitability(&s));
         }
     }
 
-    let strategy = extract_avg_strategy(&nodes);
+    let strategy: HashMap<String, Vec<f64>> = nodes.iter()
+        .map(|(k, n)| { let a = n.avg_strategy(); (k.clone(), vec![a[0], a[1]]) })
+        .collect();
+
     let ev = all_deals().iter().map(|&c| eval(&strategy, c, "")).sum::<f64>() / 6.0;
-    SolveResult { strategy, ev, iterations: total }
+
+    let spot_key = format!("{}{}", req.card, req.situation);
+    let probs = strategy.get(&spot_key).cloned().unwrap_or(vec![0.5, 0.5]);
+    SolveResult { pass_pct: probs[0], bet_pct: probs[1], ev }
 }
 
 // ── handlers ──────────────────────────────────────────────────────────────────
@@ -197,7 +199,7 @@ async fn post_solve(
     Json(req): Json<SolveRequest>,
 ) -> Json<serde_json::Value> {
     let job_id = Uuid::new_v4().to_string();
-    state.lock().unwrap().insert(job_id.clone(), Job::Pending(req.iterations));
+    state.lock().unwrap().insert(job_id.clone(), Job::Pending(req));
     Json(serde_json::json!({ "job_id": job_id }))
 }
 
@@ -210,23 +212,24 @@ async fn ws_handler(
 }
 
 async fn handle_ws(mut socket: WebSocket, state: AppState, job_id: String) {
-    let iterations = match state.lock().unwrap().get(&job_id) {
-        Some(Job::Pending(n)) => *n,
+    let req = match state.lock().unwrap().get(&job_id) {
+        Some(Job::Pending(r)) => r.clone(),
         _ => return,
     };
+    let total = req.iterations;
 
     let (progress_tx, progress_rx) = std::sync::mpsc::channel::<(u32, f64)>();
 
     let result = tokio::task::spawn_blocking(move || {
-        run_solver(iterations, |iter, expl| { let _ = progress_tx.send((iter, expl)); })
+        run_solver(&req, |iter, expl| { let _ = progress_tx.send((iter, expl)); })
     });
 
     for (iter, expl) in progress_rx {
         let msg = serde_json::json!({
             "type": "progress",
             "iteration": iter,
-            "total": iterations,
-            "exploitability": expl
+            "total": total,
+            "exploitability": expl,
         });
         if socket.send(Message::Text(msg.to_string().into())).await.is_err() {
             return;
