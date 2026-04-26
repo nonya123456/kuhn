@@ -24,11 +24,13 @@ const card       = ref<string>('K')
 const situation  = ref<string>('')        // store the suffix string directly
 const progress   = ref({ pct: 0, exploitability: 0 })
 const result     = ref<SolveResult | null>(null)
+const submitted  = ref({ card: 'K', situation: '' })
 
 async function calculate() {
   status.value = 'solving'
   result.value = null
   progress.value = { pct: 0, exploitability: 0 }
+  submitted.value = { card: card.value, situation: situation.value }
 
   const { job_id } = await fetch('/solve', {
     method: 'POST',
@@ -114,7 +116,7 @@ async function calculate() {
 
     <template v-if="status === 'done' && result">
       <div class="result-card">
-        <p class="spot-title">{{ card }} · {{ SITUATIONS.find(s => s.suffix === situation)?.label }}</p>
+        <p class="spot-title">{{ submitted.card }} · {{ SITUATIONS.find(s => s.suffix === submitted.situation)?.label }}</p>
         <div class="action-row">
           <div class="action">
             <span class="action-label pass">Pass</span>
