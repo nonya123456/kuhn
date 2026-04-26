@@ -6,7 +6,6 @@ type Status = 'idle' | 'solving' | 'done'
 interface SolveResult {
   pass_pct: number
   bet_pct: number
-  ev: number
 }
 
 const CARDS = ['J', 'Q', 'K'] as const
@@ -63,7 +62,6 @@ async function calculate() {
 <template>
   <header>
     <h1>Kuhn Poker Solver</h1>
-    <p class="subtitle">GTO via CFR+ · ante 1</p>
   </header>
 
   <main>
@@ -131,8 +129,6 @@ async function calculate() {
             <span class="action-pct bet">{{ (result.bet_pct * 100).toFixed(1) }}%</span>
           </div>
         </div>
-      </div>
-      <p class="ev">P1 EV <strong>{{ result.ev.toFixed(4) }}</strong> <span class="muted">(Nash = −0.0556)</span></p>
     </template>
   </main>
 </template>

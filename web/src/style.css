@@ -10,7 +10,6 @@ body {
 
 header { margin-bottom: 36px; }
 h1 { font-size: 1.4rem; font-weight: 600; }
-.subtitle { color: #6b7280; font-size: 0.85rem; margin-top: 4px; }
 
 .field { margin-bottom: 20px; }
 .field-label { display: block; font-size: 0.78rem; color: #6b7280; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 8px; }
@@ -107,7 +106,3 @@ input[type="number"] {
 .action-fill { height: 100%; transition: width 0.4s ease; }
 .pass-fill { background: #4b5563; }
 .bet-fill  { background: #4ade80; }
-
-.ev { margin-top: 16px; font-size: 0.875rem; color: #9ca3af; }
-.ev strong { color: #e5e5e5; }
-.muted { color: #6b7280; }
