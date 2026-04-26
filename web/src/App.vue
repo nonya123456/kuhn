@@ -129,6 +129,7 @@ async function calculate() {
             <span class="action-pct bet">{{ (result.bet_pct * 100).toFixed(1) }}%</span>
           </div>
         </div>
+      </div>
     </template>
   </main>
 </template>
