@@ -114,11 +114,22 @@ fn cfr(nodes: &mut HashMap<String, Node>, cards: [usize; 2], history: &str, p0: 
 
     let node = nodes.get_mut(&key).unwrap();
     for a in 0..2 {
-        node.regret_sum[a] = (node.regret_sum[a] + cf_reach * (utils[a] - node_util)).max(0.0);
+        // P1 maximizes, P2 minimizes P1's utility → negate regret for P2
+        let regret = if p1_turn { utils[a] - node_util } else { node_util - utils[a] };
+        node.regret_sum[a] = (node.regret_sum[a] + cf_reach * regret).max(0.0);
         node.strategy_sum[a] += my_reach * strat[a];
     }
 
     node_util
+}
+
+fn eval(strat: &HashMap<String, Vec<f64>>, cards: [usize; 2], history: &str) -> f64 {
+    if let Some(p) = terminal_payoff(history, cards) {
+        return p;
+    }
+    let key = infoset_key(history, cards);
+    let s = strat.get(&key).map_or([0.5; 2], |v| [v[0], v[1]]);
+    s[0] * eval(strat, cards, &format!("{history}p")) + s[1] * eval(strat, cards, &format!("{history}b"))
 }
 
 fn best_response(strat: &HashMap<String, Vec<f64>>, cards: [usize; 2], history: &str, br: usize) -> f64 {
@@ -175,7 +186,7 @@ fn run_solver(total: u32, on_progress: impl Fn(u32, f64)) -> SolveResult {
     }
 
     let strategy = extract_avg_strategy(&nodes);
-    let ev = all_deals().iter().map(|&c| best_response(&strategy, c, "", 0)).sum::<f64>() / 6.0;
+    let ev = all_deals().iter().map(|&c| eval(&strategy, c, "")).sum::<f64>() / 6.0;
     SolveResult { strategy, ev, iterations: total }
 }
 
