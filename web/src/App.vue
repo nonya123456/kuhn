@@ -3,9 +3,15 @@ import { ref } from 'vue'
 
 type Status = 'idle' | 'solving' | 'done'
 
-interface SolveResult {
+interface CardResult {
   pass_pct: number
   bet_pct: number
+}
+
+interface SolveResult {
+  j: CardResult
+  q: CardResult
+  k: CardResult
 }
 
 const CARDS = ['J', 'Q', 'K'] as const
@@ -19,22 +25,21 @@ const SITUATIONS = [
 
 const status     = ref<Status>('idle')
 const iterations = ref(10000)
-const card       = ref<string>('K')
-const situation  = ref<string>('')        // store the suffix string directly
+const situation  = ref<string>('')
 const progress   = ref({ pct: 0, exploitability: 0 })
 const result     = ref<SolveResult | null>(null)
-const submitted  = ref({ card: 'K', situation: '' })
+const submittedSituation = ref('')
 
 async function calculate() {
   status.value = 'solving'
   result.value = null
   progress.value = { pct: 0, exploitability: 0 }
-  submitted.value = { card: card.value, situation: situation.value }
+  submittedSituation.value = situation.value
 
   const { job_id } = await fetch('/solve', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ card: card.value, situation: situation.value, iterations: iterations.value }),
+    body: JSON.stringify({ situation: situation.value, iterations: iterations.value }),
   }).then(r => r.json())
 
   await new Promise<void>((resolve, reject) => {
@@ -57,6 +62,11 @@ async function calculate() {
   result.value = await fetch(`/result/${job_id}`).then(r => r.json())
   status.value = 'done'
 }
+
+function cardResult(card: typeof CARDS[number]): CardResult {
+  if (!result.value) return { pass_pct: 0, bet_pct: 0 }
+  return result.value[card.toLowerCase() as 'j' | 'q' | 'k']
+}
 </script>
 
 <template>
@@ -65,19 +75,6 @@ async function calculate() {
   </header>
 
   <main>
-    <div class="field">
-      <span class="field-label">Your card</span>
-      <div class="btn-group">
-        <button
-          v-for="c in CARDS"
-          :key="c"
-          :class="{ active: card === c }"
-          :disabled="status === 'solving'"
-          @click="card = c"
-        >{{ c }}</button>
-      </div>
-    </div>
-
     <div class="field">
       <span class="field-label">Situation</span>
       <div class="btn-group">
@@ -113,20 +110,24 @@ async function calculate() {
     </div>
 
     <template v-if="status === 'done' && result">
-      <div class="result-card">
-        <p class="spot-title">{{ submitted.card }} · {{ SITUATIONS.find(s => s.suffix === submitted.situation)?.label }}</p>
+      <div
+        v-for="c in CARDS"
+        :key="c"
+        class="result-card"
+      >
+        <p class="spot-title">{{ c }} · {{ SITUATIONS.find(s => s.suffix === submittedSituation)?.label }}</p>
         <div class="action-row">
           <div class="action">
             <span class="action-label pass">Pass</span>
-            <span class="action-pct pass">{{ (result.pass_pct * 100).toFixed(1) }}%</span>
+            <span class="action-pct pass">{{ (cardResult(c).pass_pct * 100).toFixed(1) }}%</span>
           </div>
           <div class="action-bar-wrap">
-            <div class="action-fill pass-fill" :style="{ width: (result.pass_pct * 100) + '%' }"></div>
-            <div class="action-fill bet-fill"  :style="{ width: (result.bet_pct  * 100) + '%' }"></div>
+            <div class="action-fill pass-fill" :style="{ width: (cardResult(c).pass_pct * 100) + '%' }"></div>
+            <div class="action-fill bet-fill"  :style="{ width: (cardResult(c).bet_pct  * 100) + '%' }"></div>
           </div>
           <div class="action">
             <span class="action-label bet">Bet</span>
-            <span class="action-pct bet">{{ (result.bet_pct * 100).toFixed(1) }}%</span>
+            <span class="action-pct bet">{{ (cardResult(c).bet_pct * 100).toFixed(1) }}%</span>
           </div>
         </div>
       </div>
