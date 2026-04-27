@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 
 type Status = 'idle' | 'solving' | 'done'
 
@@ -14,21 +14,50 @@ interface SolveResult {
   k: CardResult
 }
 
+interface GameColumn {
+  player: string
+  subtitle: string
+  situation: string
+}
+
 const CARDS = ['J', 'Q', 'K'] as const
 
 const SITUATIONS = [
-  { label: 'P1 · first to act', suffix: '' },
-  { label: 'P2 · vs check',     suffix: 'p' },
-  { label: 'P2 · vs bet',       suffix: 'b' },
-  { label: 'P1 · vs check-raise', suffix: 'pb' },
+  { label: 'P1 · first to act',    suffix: '' },
+  { label: 'P2 · vs check',        suffix: 'p' },
+  { label: 'P2 · vs bet',          suffix: 'b' },
+  { label: 'P1 · vs check-raise',  suffix: 'pb' },
 ] as const
 
 const status     = ref<Status>('idle')
 const iterations = ref(10000)
-const situation  = ref<string>('')
+const path       = ref<string[]>([])
 const progress   = ref({ pct: 0, exploitability: 0 })
 const result     = ref<SolveResult | null>(null)
 const submittedSituation = ref('')
+
+const columns = computed((): GameColumn[] => {
+  const cols: GameColumn[] = [
+    { player: 'P1', subtitle: 'first to act', situation: '' },
+  ]
+  if (!path.value[0]) return cols
+
+  if (path.value[0] === 'p') {
+    cols.push({ player: 'P2', subtitle: 'vs check', situation: 'p' })
+    if (path.value[1] === 'b') {
+      cols.push({ player: 'P1', subtitle: 'vs check-raise', situation: 'pb' })
+    }
+  } else {
+    cols.push({ player: 'P2', subtitle: 'vs bet', situation: 'b' })
+  }
+  return cols
+})
+
+const situation = computed(() => columns.value[columns.value.length - 1].situation)
+
+function selectAction(colIndex: number, action: string) {
+  path.value = [...path.value.slice(0, colIndex), action]
+}
 
 async function calculate() {
   status.value = 'solving'
@@ -77,14 +106,26 @@ function cardResult(card: typeof CARDS[number]): CardResult {
   <main>
     <div class="field">
       <span class="field-label">Situation</span>
-      <div class="btn-group">
-        <button
-          v-for="s in SITUATIONS"
-          :key="s.suffix"
-          :class="{ active: situation === s.suffix }"
-          :disabled="status === 'solving'"
-          @click="situation = s.suffix"
-        >{{ s.label }}</button>
+      <div class="situation-columns">
+        <div
+          v-for="(col, i) in columns"
+          :key="col.situation"
+          class="situation-col"
+          :class="{ active: i === columns.length - 1 }"
+        >
+          <div class="col-header">
+            <span class="col-player">{{ col.player }}</span>
+            <span class="col-subtitle">{{ col.subtitle }}</span>
+          </div>
+          <button
+            v-for="action in [{ label: 'Pass', key: 'p' }, { label: 'Bet', key: 'b' }]"
+            :key="action.key"
+            class="col-action"
+            :class="{ selected: path[i] === action.key }"
+            :disabled="status === 'solving'"
+            @click="selectAction(i, action.key)"
+          >{{ action.label }}</button>
+        </div>
       </div>
     </div>
 
