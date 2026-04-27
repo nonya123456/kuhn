@@ -31,8 +31,9 @@ const SITUATIONS = [
 
 const status     = ref<Status>('idle')
 const iterations = ref(10000)
-const path       = ref<string[]>([])
-const progress   = ref({ pct: 0, exploitability: 0 })
+const path            = ref<string[]>([])
+const activeColIndex  = ref(0)
+const progress        = ref({ pct: 0, exploitability: 0 })
 const result     = ref<SolveResult | null>(null)
 const submittedSituation = ref('')
 
@@ -53,10 +54,11 @@ const columns = computed((): GameColumn[] => {
   return cols
 })
 
-const situation = computed(() => columns.value[columns.value.length - 1].situation)
+const situation = computed(() => columns.value[activeColIndex.value]?.situation ?? '')
 
 function selectAction(colIndex: number, action: string) {
   path.value = [...path.value.slice(0, colIndex), action]
+  activeColIndex.value = columns.value.length - 1
 }
 
 async function calculate() {
@@ -111,9 +113,9 @@ function cardResult(card: typeof CARDS[number]): CardResult {
           v-for="(col, i) in columns"
           :key="col.situation"
           class="situation-col"
-          :class="{ active: i === columns.length - 1 }"
+          :class="{ active: i === activeColIndex }"
         >
-          <div class="col-header">
+          <div class="col-header" @click="activeColIndex = i">
             <span class="col-player">{{ col.player }}</span>
             <span class="col-subtitle">{{ col.subtitle }}</span>
           </div>
