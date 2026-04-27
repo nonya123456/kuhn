@@ -4,15 +4,21 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Deserialize, Clone)]
 pub struct SolveRequest {
-    pub card: String,
     pub situation: String,
     pub iterations: u32,
 }
 
 #[derive(Serialize, Clone)]
-pub struct SolveResult {
+pub struct CardResult {
     pub pass_pct: f64,
     pub bet_pct: f64,
+}
+
+#[derive(Serialize, Clone)]
+pub struct SolveResult {
+    pub j: CardResult,
+    pub q: CardResult,
+    pub k: CardResult,
     pub ev: f64,
 }
 
@@ -161,7 +167,11 @@ pub fn run_solver(req: &SolveRequest, on_progress: impl Fn(u32, f64)) -> SolveRe
 
     let ev = all_deals().iter().map(|&c| eval(&strategy, c, "")).sum::<f64>() / 6.0;
 
-    let spot_key = format!("{}{}", req.card, req.situation);
-    let probs = strategy.get(&spot_key).cloned().unwrap_or(vec![0.5, 0.5]);
-    SolveResult { pass_pct: probs[0], bet_pct: probs[1], ev }
+    let card_result = |card: char| {
+        let key = format!("{}{}", card, req.situation);
+        let probs = strategy.get(&key).cloned().unwrap_or_else(|| vec![0.5, 0.5]);
+        CardResult { pass_pct: probs[0], bet_pct: probs[1] }
+    };
+
+    SolveResult { j: card_result('J'), q: card_result('Q'), k: card_result('K'), ev }
 }
