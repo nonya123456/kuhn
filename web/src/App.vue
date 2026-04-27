@@ -143,7 +143,7 @@ function cardResult(card: typeof CARDS[number]): CardResult {
         :disabled="status === 'solving'"
       />
       <button class="primary" :disabled="status === 'solving'" @click="calculate">
-        {{ status === 'solving' ? 'Solving…' : status === 'done' ? 'Re-calculate' : 'Calculate' }}
+        {{ status === 'solving' ? 'Solving…' : 'Calculate' }}
       </button>
     </div>
 
